@@ -1,40 +1,51 @@
-import os
+import telebot
 import yt_dlp
-from telegram import Update
-from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
+import os
+from flask import Flask
+from threading import Thread
 
 TOKEN = "8662573579:AAFMuw8BTZXPvlqcVqsivFXBfT1z5uXPmXQ"
 
-async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    url = update.message.text
+bot = telebot.TeleBot(TOKEN)
 
-    if "x.com" not in url and "twitter.com" not in url:
-        await update.message.reply_text("ارسل رابط X صحيح")
-        return
+app = Flask(__name__)
 
-    await update.message.reply_text("جاري التحميل...")
+@app.route('/')
+def home():
+    return "Bot is running"
 
-    ydl_opts = {
-        'outtmpl': 'video.%(ext)s',
-        'format': 'mp4'
-    }
+def run():
+    app.run(host="0.0.0.0", port=10000)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+@bot.message_handler(func=lambda message: True)
+def download_video(message):
+    url = message.text
+
+    bot.reply_to(message, "جاري التحميل...")
 
     try:
+        ydl_opts = {
+            'format': 'mp4',
+            'outtmpl': 'video.mp4'
+        }
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
-        for file in os.listdir():
-            if file.startswith("video."):
-                await update.message.reply_video(video=open(file, 'rb'))
-                os.remove(file)
-                break
+        with open("video.mp4", "rb") as video:
+            bot.send_document(message.chat.id, video)
+
+        os.remove("video.mp4")
 
     except Exception as e:
-        await update.message.reply_text(f"خطأ: {e}")
+        bot.reply_to(message, str(e))
 
-app = ApplicationBuilder().token(TOKEN).build()
+keep_alive()
 
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_video))
+print("Bot Running")
 
-print("Bot Running...")
-app.run_polling()
+bot.infinity_polling()
